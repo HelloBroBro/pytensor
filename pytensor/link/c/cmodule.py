@@ -1950,14 +1950,13 @@ class Compiler:
 
         code = (
             """
-        %(preamble)s
+        {preamble}
         int main(int argc, char** argv)
-        {
-            %(body)s
+        {{
+            {body}
             return 0;
-        }
-        """
-            % locals()
+        }}
+        """.format(**locals())
         ).encode()
         return cls._try_compile_tmp(
             code,
@@ -2743,7 +2742,7 @@ def default_blas_ldflags():
 
         maybe_lib_dirs = [
             [pathlib.Path(p).resolve() for p in line[len("libraries: =") :].split(":")]
-            for line in stdout.decode(sys.stdout.encoding).splitlines()
+            for line in stdout.decode(sys.getdefaultencoding()).splitlines()
             if line.startswith("libraries: =")
         ]
         if len(maybe_lib_dirs) > 0:
