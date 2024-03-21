@@ -80,7 +80,7 @@ tests = [
 ]
 rtd = ["sphinx>=5.1.0,<6", "pygments", "pydot", "pydot2", "pydot-ng"]
 jax = ["jax", "jaxlib"]
-numba = ["numba>=0.55", "numba-scipy>=0.3.0"]
+numba = ["numba>=0.57"]
 
 [tool.setuptools.packages.find]
 include = ["pytensor*", "bin"]
@@ -154,6 +154,7 @@ lines-after-imports = 2
 
 
 [tool.mypy]
+python_version = "3.9"
 ignore_missing_imports = true
 no_implicit_optional = true
 check_untyped_defs = false
