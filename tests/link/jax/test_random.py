@@ -509,6 +509,34 @@ def test_random_RandomVariable(rv_op, dist_params, base_size, cdf_name, params_c
         assert test_res.pvalue > 0.01
 
 
+@pytest.mark.parametrize(
+    "rv_fn",
+    [
+        lambda param_that_implies_size: ptr.normal(
+            loc=0, scale=pt.exp(param_that_implies_size)
+        ),
+        lambda param_that_implies_size: ptr.exponential(
+            scale=pt.exp(param_that_implies_size)
+        ),
+        lambda param_that_implies_size: ptr.gamma(
+            shape=1, scale=pt.exp(param_that_implies_size)
+        ),
+        lambda param_that_implies_size: ptr.t(
+            df=3, loc=param_that_implies_size, scale=1
+        ),
+    ],
+)
+def test_size_implied_by_broadcasted_parameters(rv_fn):
+    # We need a parameter with untyped shapes to test broadcasting does not result in identical draws
+    param_that_implies_size = pt.matrix("param_that_implies_size", shape=(None, None))
+
+    rv = rv_fn(param_that_implies_size)
+    draws = rv.eval({param_that_implies_size: np.zeros((2, 2))}, mode=jax_mode)
+
+    assert draws.shape == (2, 2)
+    assert np.unique(draws).size == 4
+
+
 @pytest.mark.parametrize("size", [(), (4,)])
 def test_random_bernoulli(size):
     rng = shared(np.random.RandomState(123))
@@ -545,27 +573,49 @@ def test_random_dirichlet(parameter, size):
 
 
 def test_random_choice():
+    # `replace=True` and `p is None`
+    rng = shared(np.random.RandomState(123))
+    g = pt.random.choice(np.arange(4), size=10_000, rng=rng)
+    g_fn = compile_random_function([], g, mode=jax_mode)
+    samples = g_fn()
+    assert samples.shape == (10_000,)
     # Elements are picked at equal frequency
-    num_samples = 10000
-    rng = shared(np.random.RandomState(123))
-    g = pt.random.choice(np.arange(4), size=num_samples, rng=rng)
-    g_fn = compile_random_function([], g, mode=jax_mode)
-    samples = g_fn()
-    np.testing.assert_allclose(np.sum(samples == 3) / num_samples, 0.25, 2)
+    np.testing.assert_allclose(np.mean(samples == 3), 0.25, 2)
 
-    # `replace=False` produces unique results
-    rng = shared(np.random.RandomState(123))
-    g = pt.random.choice(np.arange(100), replace=False, size=99, rng=rng)
+    # `replace=True` and `p is not None`
+    rng = shared(np.random.default_rng(123))
+    g = pt.random.choice(4, p=np.array([0.0, 0.5, 0.0, 0.5]), size=(5, 2), rng=rng)
     g_fn = compile_random_function([], g, mode=jax_mode)
     samples = g_fn()
-    assert len(np.unique(samples)) == 99
+    assert samples.shape == (5, 2)
+    # Only odd numbers are picked
+    assert np.all(samples % 2 == 1)
 
-    # We can pass an array with probabilities
+    # `replace=False` and `p is None`
     rng = shared(np.random.RandomState(123))
-    g = pt.random.choice(np.arange(3), p=np.array([1.0, 0.0, 0.0]), size=10, rng=rng)
+    g = pt.random.choice(np.arange(100), replace=False, size=(2, 49), rng=rng)
     g_fn = compile_random_function([], g, mode=jax_mode)
     samples = g_fn()
-    np.testing.assert_allclose(samples, np.zeros(10))
+    assert samples.shape == (2, 49)
+    # Elements are unique
+    assert len(np.unique(samples)) == 98
+
+    # `replace=False` and `p is not None`
+    rng = shared(np.random.RandomState(123))
+    g = pt.random.choice(
+        8,
+        p=np.array([0.25, 0, 0.25, 0, 0.25, 0, 0.25, 0]),
+        size=3,
+        rng=rng,
+        replace=False,
+    )
+    g_fn = compile_random_function([], g, mode=jax_mode)
+    samples = g_fn()
+    assert samples.shape == (3,)
+    # Elements are unique
+    assert len(np.unique(samples)) == 3
+    # Only even numbers are picked
+    assert np.all(samples % 2 == 0)
 
 
 def test_random_categorical():
@@ -573,7 +623,15 @@ def test_random_categorical():
     g = pt.random.categorical(0.25 * np.ones(4), size=(10000, 4), rng=rng)
     g_fn = compile_random_function([], g, mode=jax_mode)
     samples = g_fn()
+    assert samples.shape == (10000, 4)
     np.testing.assert_allclose(samples.mean(axis=0), 6 / 4, 1)
+
+    # Test zero probabilities
+    g = pt.random.categorical([0, 0.5, 0, 0.5], size=(1000,), rng=rng)
+    g_fn = compile_random_function([], g, mode=jax_mode)
+    samples = g_fn()
+    assert samples.shape == (1000,)
+    assert np.all(samples % 2 == 1)
 
 
 def test_random_permutation():
