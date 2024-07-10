@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterable, Sequence
 from collections.abc import Iterable as IterableType
 from functools import _compose_mro, partial, reduce  # type: ignore
 from itertools import chain
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 import pytensor
 from pytensor.configdefaults import config
@@ -1264,7 +1264,7 @@ class SequentialNodeRewriter(NodeRewriter):
         return getattr(
             self,
             "__name__",
-            f"{type(self).__name__}({','.join([str(o) for o in self.rewrites])})",
+            f"{type(self).__name__}({','.join(str(o) for o in self.rewrites)})",
         )
 
     def tracks(self):
@@ -1666,7 +1666,7 @@ class PatternNodeRewriter(NodeRewriter):
             if isinstance(pattern, list | tuple):
                 return "{}({})".format(
                     str(pattern[0]),
-                    ", ".join([pattern_to_str(p) for p in pattern[1:]]),
+                    ", ".join(pattern_to_str(p) for p in pattern[1:]),
                 )
             elif isinstance(pattern, dict):
                 return "{} subject to {}".format(
@@ -1924,9 +1924,9 @@ class NodeProcessingGraphRewriter(GraphRewriter):
         remove: list[Variable] = []
         if isinstance(replacements, dict):
             if "remove" in replacements:
-                remove = list(cast(Sequence[Variable], replacements.pop("remove")))
-            old_vars = list(cast(Sequence[Variable], replacements.keys()))
-            replacements = list(cast(Sequence[Variable], replacements.values()))
+                remove = list(replacements.pop("remove"))
+            old_vars = list(replacements)
+            replacements = list(replacements.values())
         elif not isinstance(replacements, tuple | list):
             raise TypeError(
                 f"Node rewriter {node_rewriter} gave wrong type of replacement. "
@@ -2569,7 +2569,7 @@ class EquilibriumGraphRewriter(NodeProcessingGraphRewriter):
                 d = sorted(
                     loop_process_count[i].items(), key=lambda a: a[1], reverse=True
                 )
-                loop_times = " ".join([str((str(k), v)) for k, v in d[:5]])
+                loop_times = " ".join(str((str(k), v)) for k, v in d[:5])
                 if len(d) > 5:
                     loop_times += " ..."
             print(
