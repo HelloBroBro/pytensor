@@ -1,6 +1,7 @@
 import os
 from copy import copy
 from itertools import combinations
+from pathlib import Path
 from tempfile import mkstemp
 
 import numpy as np
@@ -442,7 +443,7 @@ def makeTester(
             gc.collect()
             for f, fname in self.tmp_files:
                 os.close(f)
-                os.remove(fname)
+                Path(fname).unlink()
 
         @pytest.mark.skipif(skip, reason="Skipped")
         def test_good(self):
@@ -528,7 +529,7 @@ def makeTester(
 
         @pytest.mark.skipif(skip, reason="Skipped")
         def test_bad_build(self):
-            for testname, inputs in self.bad_build.items():
+            for inputs in self.bad_build.values():
                 inputs = [copy(input) for input in inputs]
                 inputrs = [shared(input) for input in inputs]
                 with pytest.raises(Exception):

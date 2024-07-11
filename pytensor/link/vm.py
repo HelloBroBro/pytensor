@@ -545,7 +545,7 @@ class Stack(UpdatingVM):
             # Add the outputs that are needed for the in-place updates of the
             # inputs in `self.update_vars`
             output_subset = list(output_subset)
-            for inp, out in self.update_vars.items():
+            for out in self.update_vars.values():
                 out_idx = self.fgraph.outputs.index(out)
                 if out_idx not in output_subset:
                     output_subset.append(out_idx)
@@ -1055,12 +1055,7 @@ class VMLinker(LocalLinker):
             for v in self.fgraph.inputs + self.fgraph.outputs:
                 vars_idx.setdefault(v, len(vars_idx))
 
-            nodes_idx_inv = {}
-            vars_idx_inv = {}
-            for node, i in nodes_idx.items():
-                nodes_idx_inv[i] = node
-            for var, i in vars_idx.items():
-                vars_idx_inv[i] = var
+            vars_idx_inv = {i: var for var, i in vars_idx.items()}
 
             # put storage_map and compute_map into a int-based scheme
             storage_map_list = [
@@ -1270,15 +1265,16 @@ class VMLinker(LocalLinker):
         if self.allow_gc:
             post_thunk_clear = []
             for node in order:
-                clear_after_this_thunk = []
-                for input in node.inputs:
+                clear_after_this_thunk = [
+                    storage_map[input]
+                    for input in node.inputs
                     if (
                         input in computed
                         and input not in fgraph.outputs
                         and node == last_user[input]
                         and input not in reallocated_vars
-                    ):
-                        clear_after_this_thunk.append(storage_map[input])
+                    )
+                ]
                 post_thunk_clear.append(clear_after_this_thunk)
         else:
             post_thunk_clear = None
