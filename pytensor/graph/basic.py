@@ -710,7 +710,7 @@ class AtomicVariable(Variable[_TypeType, None]):
         return cp
 
 
-class NominalVariable(AtomicVariable[_TypeType]):
+class NominalVariable(Generic[_TypeType, _IdType], AtomicVariable[_TypeType]):
     """A variable that enables alpha-equivalent comparisons."""
 
     __instances__: dict[tuple["Type", Hashable], "NominalVariable"] = {}
@@ -1313,8 +1313,9 @@ def clone_get_equiv(
     outputs: Reversible[Variable],
     copy_inputs: bool = True,
     copy_orphans: bool = True,
-    memo: dict[Union[Apply, Variable, "Op"], Union[Apply, Variable, "Op"]]
-    | None = None,
+    memo: (
+        dict[Union[Apply, Variable, "Op"], Union[Apply, Variable, "Op"]] | None
+    ) = None,
     clone_inner_graphs: bool = False,
     **kwargs,
 ) -> dict[Union[Apply, Variable, "Op"], Union[Apply, Variable, "Op"]]:
