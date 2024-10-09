@@ -12,14 +12,17 @@ from pytensor.graph.rewriting.basic import (
 from pytensor.scalar.basic import Mul
 from pytensor.tensor.basic import (
     AllocDiag,
+    ExtractDiag,
     Eye,
     TensorVariable,
+    concatenate,
+    diag,
     diagonal,
 )
 from pytensor.tensor.blas import Dot22
 from pytensor.tensor.blockwise import Blockwise
 from pytensor.tensor.elemwise import DimShuffle, Elemwise
-from pytensor.tensor.math import Dot, Prod, _matrix_matrix_matmul, log, prod
+from pytensor.tensor.math import Dot, Prod, _matrix_matrix_matmul, log, outer, prod
 from pytensor.tensor.nlinalg import (
     SVD,
     KroneckerProduct,
@@ -29,6 +32,7 @@ from pytensor.tensor.nlinalg import (
     inv,
     kron,
     pinv,
+    slogdet,
     svd,
 )
 from pytensor.tensor.rewriting.basic import (
@@ -65,7 +69,7 @@ def is_matrix_transpose(x: TensorVariable) -> bool:
         if ndims < 2:
             return False
         transpose_order = (*range(ndims - 2), ndims - 1, ndims - 2)
-        return cast(bool, node.op.new_order == transpose_order)
+        return node.op.new_order == transpose_order
     return False
 
 
@@ -701,3 +705,264 @@ def rewrite_inv_diag_to_diag_reciprocal(fgraph, node):
         non_eye_input = pt.shape_padaxis(non_eye_diag, -2)
 
     return [eye_input / non_eye_input]
+
+
+@register_canonicalize
+@register_stabilize
+@node_rewriter([ExtractDiag])
+def rewrite_diag_blockdiag(fgraph, node):
+    """
+    This rewrite simplifies extracting the diagonal of a blockdiagonal matrix by concatening the diagonal values of all of the individual sub matrices.
+
+    diag(block_diag(a,b,c,....)) = concat(diag(a), diag(b), diag(c),...)
+
+    Parameters
+    ----------
+    fgraph: FunctionGraph
+        Function graph being optimized
+    node: Apply
+        Node of the function graph to be optimized
+
+    Returns
+    -------
+    list of Variable, optional
+        List of optimized variables, or None if no optimization was performed
+    """
+    # Check for inner block_diag operation
+    potential_block_diag = node.inputs[0].owner
+    if not (
+        potential_block_diag
+        and isinstance(potential_block_diag.op, Blockwise)
+        and isinstance(potential_block_diag.op.core_op, BlockDiagonal)
+    ):
+        return None
+
+    # Find the composing sub_matrices
+    submatrices = potential_block_diag.inputs
+    submatrices_diag = [diag(submatrices[i]) for i in range(len(submatrices))]
+
+    return [concatenate(submatrices_diag)]
+
+
+@register_canonicalize
+@register_stabilize
+@node_rewriter([det])
+def rewrite_det_blockdiag(fgraph, node):
+    """
+    This rewrite simplifies the determinant of a blockdiagonal matrix by extracting the individual sub matrices and returning the product of all individual determinant values.
+
+    det(block_diag(a,b,c,....)) = prod(det(a), det(b), det(c),...)
+
+    Parameters
+    ----------
+    fgraph: FunctionGraph
+        Function graph being optimized
+    node: Apply
+        Node of the function graph to be optimized
+
+    Returns
+    -------
+    list of Variable, optional
+        List of optimized variables, or None if no optimization was performed
+    """
+    # Check for inner block_diag operation
+    potential_block_diag = node.inputs[0].owner
+    if not (
+        potential_block_diag
+        and isinstance(potential_block_diag.op, Blockwise)
+        and isinstance(potential_block_diag.op.core_op, BlockDiagonal)
+    ):
+        return None
+
+    # Find the composing sub_matrices
+    sub_matrices = potential_block_diag.inputs
+    det_sub_matrices = [det(sub_matrices[i]) for i in range(len(sub_matrices))]
+
+    return [prod(det_sub_matrices)]
+
+
+@register_canonicalize
+@register_stabilize
+@node_rewriter([slogdet])
+def rewrite_slogdet_blockdiag(fgraph, node):
+    """
+    This rewrite simplifies the slogdet of a blockdiagonal matrix by extracting the individual sub matrices and returning the sign and logdet values computed using those
+
+    slogdet(block_diag(a,b,c,....)) = prod(sign(a), sign(b), sign(c),...), sum(logdet(a), logdet(b), logdet(c),....)
+
+    Parameters
+    ----------
+    fgraph: FunctionGraph
+        Function graph being optimized
+    node: Apply
+        Node of the function graph to be optimized
+
+    Returns
+    -------
+    list of Variable, optional
+        List of optimized variables, or None if no optimization was performed
+    """
+    # Check for inner block_diag operation
+    potential_block_diag = node.inputs[0].owner
+    if not (
+        potential_block_diag
+        and isinstance(potential_block_diag.op, Blockwise)
+        and isinstance(potential_block_diag.op.core_op, BlockDiagonal)
+    ):
+        return None
+
+    # Find the composing sub_matrices
+    sub_matrices = potential_block_diag.inputs
+    sign_sub_matrices, logdet_sub_matrices = zip(
+        *[slogdet(sub_matrices[i]) for i in range(len(sub_matrices))]
+    )
+
+    return [prod(sign_sub_matrices), sum(logdet_sub_matrices)]
+
+
+@register_canonicalize
+@register_stabilize
+@node_rewriter([ExtractDiag])
+def rewrite_diag_kronecker(fgraph, node):
+    """
+    This rewrite simplifies the diagonal of the kronecker product of 2 matrices by extracting the individual sub matrices and returning their outer product as a vector.
+
+    diag(kron(a,b)) -> outer(diag(a), diag(b))
+
+    Parameters
+    ----------
+    fgraph: FunctionGraph
+        Function graph being optimized
+    node: Apply
+        Node of the function graph to be optimized
+
+    Returns
+    -------
+    list of Variable, optional
+        List of optimized variables, or None if no optimization was performed
+    """
+    # Check for inner kron operation
+    potential_kron = node.inputs[0].owner
+    if not (potential_kron and isinstance(potential_kron.op, KroneckerProduct)):
+        return None
+
+    # Find the matrices
+    a, b = potential_kron.inputs
+    diag_a, diag_b = diag(a), diag(b)
+    outer_prod_as_vector = outer(diag_a, diag_b).flatten()
+
+    return [outer_prod_as_vector]
+
+
+@register_canonicalize
+@register_stabilize
+@node_rewriter([slogdet])
+def rewrite_slogdet_kronecker(fgraph, node):
+    """
+    This rewrite simplifies the slogdet of a kronecker-structured matrix by extracting the individual sub matrices and returning the sign and logdet values computed using those
+
+    Parameters
+    ----------
+    fgraph: FunctionGraph
+        Function graph being optimized
+    node: Apply
+        Node of the function graph to be optimized
+
+    Returns
+    -------
+    list of Variable, optional
+        List of optimized variables, or None if no optimization was performed
+    """
+    # Check for inner kron operation
+    potential_kron = node.inputs[0].owner
+    if not (potential_kron and isinstance(potential_kron.op, KroneckerProduct)):
+        return None
+
+    # Find the matrices
+    a, b = potential_kron.inputs
+    signs, logdets = zip(*[slogdet(a), slogdet(b)])
+    sizes = [a.shape[-1], b.shape[-1]]
+    prod_sizes = prod(sizes, no_zeros_in_input=True)
+    signs_final = [signs[i] ** (prod_sizes / sizes[i]) for i in range(2)]
+    logdet_final = [logdets[i] * prod_sizes / sizes[i] for i in range(2)]
+
+    return [prod(signs_final, no_zeros_in_input=True), sum(logdet_final)]
+
+
+@register_canonicalize
+@register_stabilize
+@node_rewriter([Blockwise])
+def rewrite_remove_useless_cholesky(fgraph, node):
+    """
+     This rewrite takes advantage of the fact that the cholesky decomposition of an identity matrix is the matrix itself
+
+    The presence of an identity matrix is identified by checking whether we have k = 0 for an Eye Op inside Cholesky.
+
+    Parameters
+    ----------
+    fgraph: FunctionGraph
+        Function graph being optimized
+    node: Apply
+        Node of the function graph to be optimized
+
+    Returns
+    -------
+    list of Variable, optional
+        List of optimized variables, or None if no optimization was performed
+    """
+    # Find whether cholesky op is being applied
+    if not isinstance(node.op.core_op, Cholesky):
+        return None
+
+    # Check whether input to Cholesky is Eye and the 1's are on main diagonal
+    potential_eye = node.inputs[0]
+    if not (
+        potential_eye.owner
+        and isinstance(potential_eye.owner.op, Eye)
+        and hasattr(potential_eye.owner.inputs[-1], "data")
+        and potential_eye.owner.inputs[-1].data.item() == 0
+    ):
+        return None
+    return [potential_eye]
+
+
+@register_canonicalize
+@register_stabilize
+@node_rewriter([Blockwise])
+def rewrite_cholesky_diag_to_sqrt_diag(fgraph, node):
+    # Find whether cholesky op is being applied
+    if not isinstance(node.op.core_op, Cholesky):
+        return None
+
+    [input] = node.inputs
+    # Check for use of pt.diag first
+    if (
+        input.owner
+        and isinstance(input.owner.op, AllocDiag)
+        and AllocDiag.is_offset_zero(input.owner)
+    ):
+        diag_input = input.owner.inputs[0]
+        cholesky_val = pt.diag(diag_input**0.5)
+        return [cholesky_val]
+
+    # Check if the input is an elemwise multiply with identity matrix -- this also results in a diagonal matrix
+    inputs_or_none = _find_diag_from_eye_mul(input)
+    if inputs_or_none is None:
+        return None
+
+    eye_input, non_eye_inputs = inputs_or_none
+
+    # Dealing with only one other input
+    if len(non_eye_inputs) != 1:
+        return None
+
+    [non_eye_input] = non_eye_inputs
+
+    # Now, we can simply return the matrix consisting of sqrt values of the original diagonal elements
+    # For a matrix, we have to first extract the diagonal (non-zero values) and then only use those
+    if non_eye_input.type.broadcastable[-2:] == (False, False):
+        non_eye_input = non_eye_input.diagonal(axis1=-1, axis2=-2)
+        if eye_input.type.ndim > 2:
+            non_eye_input = pt.shape_padaxis(non_eye_input, -2)
+
+    return [eye_input * (non_eye_input**0.5)]

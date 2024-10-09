@@ -68,7 +68,7 @@ from pytensor.tensor.basic import (
 from pytensor.tensor.elemwise import DimShuffle, Elemwise
 from pytensor.tensor.exceptions import NotScalarConstantError
 from pytensor.tensor.extra_ops import broadcast_arrays
-from pytensor.tensor.math import Sum, add, eq
+from pytensor.tensor.math import Sum, add, eq, variadic_add
 from pytensor.tensor.shape import Shape_i, shape_padleft
 from pytensor.tensor.type import DenseTensorType, TensorType
 from pytensor.tensor.variable import TensorConstant, TensorVariable
@@ -494,7 +494,7 @@ def local_alloc_sink_dimshuffle(fgraph, node):
         dimshuffle_new_order = ["x"] * num_dims_with_size_1_added_to_left + list(
             range(len(new_output_shape))
         )
-        return [DimShuffle(inner.type.broadcastable, dimshuffle_new_order)(inner)]
+        return [inner.dimshuffle(dimshuffle_new_order)]
 
 
 @node_rewriter([AllocEmpty])
@@ -939,14 +939,9 @@ def local_sum_make_vector(fgraph, node):
     if acc_dtype == "float64" and out_dtype != "float64" and config.floatX != "float64":
         return
 
-    if len(elements) == 0:
-        element_sum = zeros(dtype=out_dtype, shape=())
-    elif len(elements) == 1:
-        element_sum = cast(elements[0], out_dtype)
-    else:
-        element_sum = cast(
-            add(*[cast(value, acc_dtype) for value in elements]), out_dtype
-        )
+    element_sum = cast(
+        variadic_add(*[cast(value, acc_dtype) for value in elements]), out_dtype
+    )
 
     return [element_sum]
 

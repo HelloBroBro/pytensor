@@ -589,7 +589,7 @@ class TensorFromScalar(COp):
         # Currently, pytensor.grad insists that the dtype of the returned
         # gradient has a float dtype, so we use floatX.
         if s.type.dtype in discrete_dtypes:
-            return [s.zeros_like().astype(config.floatX)]
+            return [s.zeros_like(dtype=config.floatX)]
 
         raise NotImplementedError("grad not implemented for complex dtypes")
 
@@ -1876,7 +1876,7 @@ class MakeVector(COp):
     def grad(self, inputs, output_gradients):
         # If the output is of an integer dtype, no gradient shall pass
         if self.dtype in discrete_dtypes:
-            return [ipt.zeros_like().astype(config.floatX) for ipt in inputs]
+            return [ipt.zeros_like(dtype=config.floatX) for ipt in inputs]
 
         grads = [output_gradients[0][i] for i in range(len(inputs))]
         return grads
@@ -2042,7 +2042,7 @@ def transpose(x, axes=None):
         # No-op
         return _x
 
-    ret = DimShuffle(tuple(s == 1 for s in _x.type.shape), axes)(_x)
+    ret = _x.dimshuffle(axes)
 
     if _x.name and axes == tuple(range((_x.type.ndim - 1), -1, -1)):
         ret.name = _x.name + ".T"
@@ -3518,7 +3518,7 @@ class PermuteRowElements(Op):
                 newdims.append(i)
                 i += 1
 
-        gx = DimShuffle(tuple(s == 1 for s in gx.type.shape), newdims)(gx)
+        gx = gx.dimshuffle(newdims)
         assert gx.type.ndim == x.type.ndim
         assert all(
             s1 == s2
