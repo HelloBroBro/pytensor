@@ -4246,7 +4246,11 @@ class Composite(ScalarInnerGraphOp):
             r.name = f"o{int(i)}"
         io = set(self.fgraph.inputs + self.fgraph.outputs)
         for i, r in enumerate(self.fgraph.variables):
-            if r not in io and len(self.fgraph.clients[r]) > 1:
+            if (
+                not isinstance(r, Constant)
+                and r not in io
+                and len(self.fgraph.clients[r]) > 1
+            ):
                 r.name = f"t{int(i)}"
 
         if len(self.fgraph.outputs) > 1 or len(self.fgraph.apply_nodes) > 10:
@@ -4345,7 +4349,7 @@ class Composite(ScalarInnerGraphOp):
                 if var not in self.fgraph.inputs:
                     # This is an orphan
                     if isinstance(var, Constant) and isinstance(var.type, CLinkerType):
-                        subd[var] = var.type.c_literal(var.data)
+                        subd[var] = f"({var.type.c_literal(var.data)})"
                     else:
                         raise ValueError(
                             "All orphans in the fgraph to Composite must"
@@ -4404,7 +4408,7 @@ class Composite(ScalarInnerGraphOp):
         return self.c_code_template % d
 
     def c_code_cache_version_outer(self) -> tuple[int, ...]:
-        return (4,)
+        return (5,)
 
 
 class Compositef32:

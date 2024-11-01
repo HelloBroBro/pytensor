@@ -598,7 +598,7 @@ class _tensor_py_operators:
 
     def __setitem__(self, key, value):
         raise TypeError(
-            "TensorVariable does not support item assignment. Use the output of `set` or `add` instead."
+            "TensorVariable does not support item assignment. Use the output of `x[idx].set` or `x[idx].inc` instead."
         )
 
     def take(self, indices, axis=None, mode="raise"):
@@ -1045,11 +1045,13 @@ def get_unique_constant_value(x: TensorVariable) -> Number | None:
     if isinstance(x, Constant):
         data = x.data
 
-        if isinstance(data, np.ndarray) and data.ndim > 0:
+        if isinstance(data, np.ndarray) and data.size > 0:
+            if data.size == 1:
+                return data.squeeze()
+
             flat_data = data.ravel()
-            if flat_data.shape[0]:
-                if (flat_data == flat_data[0]).all():
-                    return flat_data[0]
+            if (flat_data == flat_data[0]).all():
+                return flat_data[0]
 
     return None
 
