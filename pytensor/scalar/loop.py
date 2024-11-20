@@ -93,7 +93,7 @@ class ScalarLoop(ScalarInnerGraphOp):
                 )
         else:
             update = outputs
-        for i, u in zip(init, update):
+        for i, u in zip(init, update, strict=False):
             if i.type != u.type:
                 raise TypeError(
                     "Init and update types must be the same: "
@@ -166,7 +166,7 @@ class ScalarLoop(ScalarInnerGraphOp):
             # Make a new op with the right input types.
             res = rebuild_collect_shared(
                 self.outputs,
-                replace=dict(zip(self.inputs, inputs)),
+                replace=dict(zip(self.inputs, inputs, strict=True)),
                 rebuild_strict=False,
             )
             if self.is_while:
@@ -207,7 +207,8 @@ class ScalarLoop(ScalarInnerGraphOp):
             for i in range(n_steps):
                 carry = inner_fn(*carry, *constant)
 
-        for storage, out_val in zip(output_storage, carry):
+        # strict=False because we are in a hot loop
+        for storage, out_val in zip(output_storage, carry, strict=False):
             storage[0] = out_val
 
     @property
@@ -295,7 +296,7 @@ class ScalarLoop(ScalarInnerGraphOp):
 
         # Set the carry variables to the output variables
         _c_code += "\n"
-        for init, update in zip(carry_subd.values(), update_subd.values()):
+        for init, update in zip(carry_subd.values(), update_subd.values(), strict=True):
             _c_code += f"{init} = {update};\n"
 
         # _c_code += 'printf("%%ld\\n", i);\n'
@@ -321,8 +322,8 @@ class ScalarLoop(ScalarInnerGraphOp):
     def c_code(self, node, nodename, inames, onames, sub):
         d = dict(
             chain(
-                zip((f"i{int(i)}" for i in range(len(inames))), inames),
-                zip((f"o{int(i)}" for i in range(len(onames))), onames),
+                zip((f"i{int(i)}" for i in range(len(inames))), inames, strict=True),
+                zip((f"o{int(i)}" for i in range(len(onames))), onames, strict=True),
             ),
             **sub,
         )
